@@ -519,13 +519,17 @@ jobs:
         run: |
           cat > /tmp/metro-reload.cjs <<'EOF'
           const WebSocket = require('ws');
+          const { execSync } = require('child_process');
+          const reopen = () => {
+            try { execSync('xcrun simctl openurl booted "exp://127.0.0.1:8081"'); } catch {}
+          };
           const ws = new WebSocket('ws://127.0.0.1:8081/message');
           ws.on('open', () => {
             ws.send(JSON.stringify({ method: 'reload', version: 2 }));
-            setTimeout(() => { ws.close(); process.exit(0); }, 800);
+            setTimeout(() => { reopen(); ws.close(); process.exit(0); }, 800);
           });
-          ws.on('error', () => process.exit(0));
-          setTimeout(() => process.exit(0), 3000);
+          ws.on('error', () => { reopen(); process.exit(0); });
+          setTimeout(() => process.exit(0), 5000);
           EOF
           nohup bash -c 'while true; do
             sleep 15
