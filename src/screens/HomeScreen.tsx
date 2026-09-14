@@ -20,7 +20,7 @@ const ACCENT = {
 };
 
 const BUBBLE: Record<CatMood, string> = {
-  idle: "Let's get focused!",
+  idle: "Meow! Time to focus!",
   focus: 'Purr-fect focus...',
   sleep: 'Zzz... nap time',
   happy: 'Amazing work!',
