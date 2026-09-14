@@ -310,17 +310,24 @@ jobs:
           tar -xzf cloudflared.tgz
           chmod +x cloudflared
 
-          nohup ./cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATE_PORT" \
-            --logfile cloudflared.log > /dev/null 2>&1 &
-          disown
-
           TUNNEL=""
-          for _ in $(seq 1 60); do
-            TUNNEL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log 2>/dev/null | head -1 || true)
+          for attempt in 1 2 3; do
+            echo "cloudflared attempt $attempt"
+            pkill -f 'cloudflared tunnel' 2>/dev/null || true
+            : > cloudflared.log
+            nohup ./cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATE_PORT" \
+              --logfile cloudflared.log > /dev/null 2>&1 &
+            disown
+            for _ in $(seq 1 60); do
+              TUNNEL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log 2>/dev/null | head -1 || true)
+              [ -n "$TUNNEL" ] && break
+              sleep 2
+            done
             [ -n "$TUNNEL" ] && break
-            sleep 2
+            tail -20 cloudflared.log || true
+            sleep 5
           done
-          [ -n "$TUNNEL" ] || { echo "cloudflared never reported a URL"; tail -50 cloudflared.log; exit 1; }
+          [ -n "$TUNNEL" ] || { echo "cloudflared never reported a URL after 3 attempts"; tail -50 cloudflared.log; exit 1; }
 
           URL="$TUNNEL/?k=$GATE_TOKEN"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
