@@ -518,18 +518,42 @@ jobs:
         if: inputs.mode == 'go'
         run: |
           cat > /tmp/metro-reload.cjs <<'EOF'
+          const http = require('http');
           const WebSocket = require('ws');
           const { execSync } = require('child_process');
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          // Force Metro to rebuild from the freshly-reset tree before the app
+          // re-requests its bundle — otherwise Expo Go gets the stale graph.
+          const requestBundle = () => new Promise((resolve) => {
+            const req = http.get(
+              'http://127.0.0.1:8081/index.bundle?platform=ios&dev=true&minify=false',
+              (res) => { res.resume(); res.on('end', resolve); });
+            req.setTimeout(120000, () => { req.destroy(); resolve(); });
+            req.on('error', () => resolve());
+          });
+          const broadcastReload = () => new Promise((resolve) => {
+            try {
+              const ws = new WebSocket('ws://127.0.0.1:8081/message');
+              ws.on('open', () => {
+                ws.send(JSON.stringify({ method: 'reload', version: 2 }));
+                setTimeout(() => { try { ws.close(); } catch {} resolve(); }, 500);
+              });
+              ws.on('error', () => resolve());
+              setTimeout(() => resolve(), 5000);
+            } catch { resolve(); }
+          });
           const reopen = () => {
             try { execSync('xcrun simctl openurl booted "exp://127.0.0.1:8081"'); } catch {}
           };
-          const ws = new WebSocket('ws://127.0.0.1:8081/message');
-          ws.on('open', () => {
-            ws.send(JSON.stringify({ method: 'reload', version: 2 }));
-            setTimeout(() => { reopen(); ws.close(); process.exit(0); }, 800);
-          });
-          ws.on('error', () => { reopen(); process.exit(0); });
-          setTimeout(() => process.exit(0), 5000);
+          (async () => {
+            await sleep(8000);       // let the file watcher ingest touched files
+            await requestBundle();   // rebuild from fresh files server-side
+            await sleep(2000);
+            await requestBundle();   // second pass if events landed late
+            await broadcastReload();
+            reopen();
+            process.exit(0);
+          })();
           EOF
           nohup bash -c 'while true; do
             sleep 15
