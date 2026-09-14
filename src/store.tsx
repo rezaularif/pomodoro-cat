@@ -83,6 +83,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || !running || secondsLeft > 0) return;
     if (mode === 'focus') {
+      // TODO: play short meow sound here (e.g. 'meow.mp3') when the focus session completes.
       const key = todayKey();
       setSessions((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
       setMode('break');

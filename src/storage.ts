@@ -10,7 +10,7 @@ export type Settings = {
 export type Sessions = Record<string, number>;
 
 export const DEFAULT_SETTINGS: Settings = {
-  workMinutes: 25,
+  workMinutes: 10,
   breakMinutes: 5,
   dailyGoal: 4,
   autoStartBreaks: false,
