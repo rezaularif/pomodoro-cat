@@ -232,7 +232,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingVertical: 9,
     paddingHorizontal: 18,
-    marginBottom: 10,
   },
   bubbleText: {
     fontFamily: fonts.bold,
@@ -244,6 +243,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     marginTop: -6,
+    marginBottom: 2,
     backgroundColor: colors.cardSoft,
     transform: [{ rotate: '45deg' }],
     borderRadius: 3,
