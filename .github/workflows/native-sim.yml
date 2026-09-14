@@ -522,13 +522,11 @@ jobs:
           const WebSocket = require('ws');
           const { execSync } = require('child_process');
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-          // Force Metro to rebuild from the freshly-reset tree before the app
-          // re-requests its bundle — otherwise Expo Go gets the stale graph.
           const requestBundle = () => new Promise((resolve) => {
             const req = http.get(
               'http://127.0.0.1:8081/index.bundle?platform=ios&dev=true&minify=false',
               (res) => { res.resume(); res.on('end', resolve); });
-            req.setTimeout(120000, () => { req.destroy(); resolve(); });
+            req.setTimeout(180000, () => { req.destroy(); resolve(); });
             req.on('error', () => resolve());
           });
           const broadcastReload = () => new Promise((resolve) => {
@@ -546,10 +544,7 @@ jobs:
             try { execSync('xcrun simctl openurl booted "exp://127.0.0.1:8081"'); } catch {}
           };
           (async () => {
-            await sleep(8000);       // let the file watcher ingest touched files
-            await requestBundle();   // rebuild from fresh files server-side
-            await sleep(2000);
-            await requestBundle();   // second pass if events landed late
+            await requestBundle();   // warm the bundle so the app loads fast
             await broadcastReload();
             reopen();
             process.exit(0);
@@ -563,8 +558,20 @@ jobs:
             if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
               git reset --hard FETCH_HEAD
               npm install --no-audit --no-fund >/dev/null 2>&1 || true
-              find . -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \) \
-                -not -path './node_modules/*' -exec touch {} +
+              # restart Metro — a fresh graph is the only guaranteed way to
+              # serve the new tree (watcher lag made reloads one commit stale)
+              kill $(lsof -ti tcp:8081) 2>/dev/null || true
+              # wait for the port to free so expo rebinds 8081, not 8082
+              for _ in $(seq 1 30); do
+                lsof -ti tcp:8081 >/dev/null 2>&1 || break
+                sleep 1
+              done
+              CI=1 nohup npx expo start --ios >> expo-start.log 2>&1 &
+              disown
+              for _ in $(seq 1 90); do
+                curl -fsS http://127.0.0.1:8081/status >/dev/null 2>&1 && break
+                sleep 2
+              done
               node /tmp/metro-reload.cjs || true
               echo "synced to $REMOTE at $(date +%T)"
               gh api "repos/$GITHUB_REPOSITORY/statuses/$REMOTE" \
