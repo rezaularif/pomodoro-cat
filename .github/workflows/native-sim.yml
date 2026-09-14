@@ -510,19 +510,30 @@ jobs:
       - name: Watch repository for changes
         if: inputs.mode == 'go'
         run: |
+          cat > /tmp/metro-reload.cjs <<'EOF'
+          const WebSocket = require('ws');
+          const ws = new WebSocket('ws://127.0.0.1:8081/message');
+          ws.on('open', () => {
+            ws.send(JSON.stringify({ method: 'reload', version: 2 }));
+            setTimeout(() => { ws.close(); process.exit(0); }, 800);
+          });
+          ws.on('error', () => process.exit(0));
+          setTimeout(() => process.exit(0), 3000);
+          EOF
           nohup bash -c 'while true; do
             sleep 15
             git fetch origin "${{ github.ref_name }}" 2>/dev/null || continue
             LOCAL=$(git rev-parse HEAD)
-            REMOTE=$(git rev-parse "origin/${{ github.ref_name }}" 2>/dev/null || echo "")
+            REMOTE=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
             if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
-              git reset --hard "origin/${{ github.ref_name }}"
+              git reset --hard FETCH_HEAD
               npm install --no-audit --no-fund >/dev/null 2>&1 || true
+              node /tmp/metro-reload.cjs || true
+              echo "synced to $REMOTE at $(date +%T)"
             fi
           done' > repo-sync.log 2>&1 &
           disown
-          echo "repo sync loop started — pushes to the branch live-reload the simulator"
-
+          echo "repo sync loop started"
       - name: Report app installed
         if: inputs.mode == 'build' || inputs.mode == 'app'
         run: |
