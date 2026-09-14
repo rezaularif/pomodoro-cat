@@ -126,7 +126,9 @@ export function HomeScreen() {
             ))}
           </View>
           <Text style={styles.dotsLabel}>
-            {todayCount} of {goal} sessions done
+            {todayCount >= goal
+              ? 'Daily goal reached'
+              : `${todayCount} of ${goal} sessions done`}
           </Text>
         </CircularTimer>
       </View>

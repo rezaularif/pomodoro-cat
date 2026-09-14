@@ -35,7 +35,9 @@ export function StatsScreen() {
             <Icon name="paw" size={16} color="#FFFFFF" />
           </View>
           <Text style={styles.summaryValueLight}>{todayCount}</Text>
-          <Text style={styles.summaryLabelLight}>sessions today</Text>
+          <Text style={styles.summaryLabelLight}>
+            {todayCount === 1 ? 'session today' : 'sessions today'}
+          </Text>
         </View>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryValue}>{formatMinutes(todayMinutes)}</Text>
