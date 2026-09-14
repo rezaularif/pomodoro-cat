@@ -539,7 +539,8 @@ jobs:
             if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
               git reset --hard FETCH_HEAD
               npm install --no-audit --no-fund >/dev/null 2>&1 || true
-              touch App.tsx index.ts 2>/dev/null || true
+              find . -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \) \
+                -not -path './node_modules/*' -exec touch {} +
               node /tmp/metro-reload.cjs || true
               echo "synced to $REMOTE at $(date +%T)"
               gh api "repos/$GITHUB_REPOSITORY/statuses/$REMOTE" \
