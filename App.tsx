@@ -1,20 +1,48 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { SafeAreaView, StyleSheet, View } from 'react-native';
+import { PomodoroProvider } from './src/store';
+import { TabBar, type TabKey } from './src/components/TabBar';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { StatsScreen } from './src/screens/StatsScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { colors } from './src/theme';
 
-export default function App() {
+function Shell() {
+  const [tab, setTab] = useState<TabKey>('timer');
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
+    <View style={styles.shell}>
+      <View style={styles.screen}>
+        {tab === 'timer' ? <HomeScreen /> : null}
+        {tab === 'stats' ? <StatsScreen /> : null}
+        {tab === 'settings' ? <SettingsScreen /> : null}
+      </View>
+      <TabBar active={tab} onChange={setTab} />
     </View>
   );
 }
 
+export default function App() {
+  return (
+    <PomodoroProvider>
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <Shell />
+      </SafeAreaView>
+    </PomodoroProvider>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  shell: {
+    flex: 1,
+  },
+  screen: {
+    flex: 1,
   },
 });
