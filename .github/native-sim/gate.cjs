@@ -98,6 +98,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+
+  if (pathnameOf(req) === '/__studio/status') {
+    const fs = require('node:fs');
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'no-store');
+    try {
+      const state = JSON.parse(fs.readFileSync('.git/studio-preview-status.json', 'utf8'));
+      let logs = '';
+      try {
+        const fd = fs.openSync('.git/studio-metro.log', 'r');
+        try {
+          const size = fs.fstatSync(fd).size;
+          const buffer = Buffer.alloc(Math.min(size, 12000));
+          fs.readSync(fd, buffer, 0, buffer.length, Math.max(0, size - buffer.length));
+          logs = buffer.toString('utf8');
+        } finally { fs.closeSync(fd); }
+      } catch {}
+      res.end(JSON.stringify({ ...state, logs }));
+    } catch { res.end(JSON.stringify({ phase: 'loading', message: 'Preparing preview' })); }
+    return;
+  }
   const agent = isAgentRoute(req);
 
   // Trade the query token for a cookie so the key stops travelling in URLs
@@ -108,7 +129,7 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     url.searchParams.delete('k');
     res.writeHead(302, {
-      'set-cookie': `${COOKIE}=${TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`,
+      'set-cookie': `${COOKIE}=${TOKEN}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=43200`,
       location: url.pathname + url.search,
     });
     res.end();
