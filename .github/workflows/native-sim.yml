@@ -80,6 +80,8 @@ jobs:
       STUDIO_BRANCH: ${{ github.ref_name }}
       CI: '1'
     steps:
+      - name: Mask preview access key
+        run: node -e 'const fs = require("node:fs"); const key = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs.gate_token; if (!/^[A-Za-z0-9_-]{20,}$/.test(key)) process.exit(1); console.log("::add-mask::" + key);'
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -242,50 +244,41 @@ jobs:
       - name: Open tunnel and publish URL
         timeout-minutes: 10
         id: tunnel
-        env:
-          GATE_TOKEN: ${{ inputs.gate_token }}
-        run: |
+        run: |-
           set -euo pipefail
-          curl -fsSL -o cloudflared.tgz \
+          curl -fsSL --retry 2 --connect-timeout 15 --max-time 90 -o cloudflared.tgz \
             https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz
           tar -xzf cloudflared.tgz
           chmod +x cloudflared
-
-          nohup ./cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATE_PORT" \
-            --logfile cloudflared.log > /dev/null 2>&1 &
-          disown
-
           TUNNEL=""
-          for _ in $(seq 1 60); do
-            TUNNEL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log 2>/dev/null | head -1 || true)
-            [ -n "$TUNNEL" ] && break
-            sleep 2
+          for attempt in 1 2 3; do
+            : > cloudflared.log
+            nohup ./cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATE_PORT" \
+              --logfile cloudflared.log > cloudflared-stderr.log 2>&1 &
+            TUNNEL_PID=$!
+            for _ in $(seq 1 30); do
+              TUNNEL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log | head -1 || true)
+              [ -n "$TUNNEL" ] && break
+              kill -0 "$TUNNEL_PID" 2>/dev/null || break
+              sleep 2
+            done
+            if [ -n "$TUNNEL" ]; then
+              for _ in $(seq 1 5); do
+                if curl -fsS --max-time 5 "$TUNNEL/__native-sim/healthz" >/dev/null \
+                  || curl -fsS --max-time 5 --doh-url https://cloudflare-dns.com/dns-query "$TUNNEL/__native-sim/healthz" >/dev/null; then break 2; fi
+                sleep 3
+              done
+            fi
+            kill "$TUNNEL_PID" 2>/dev/null || true
+            wait "$TUNNEL_PID" 2>/dev/null || true
+            TUNNEL=""
+            echo "::warning::Tunnel attempt $attempt failed"
           done
-          [ -n "$TUNNEL" ] || { echo "cloudflared never reported a URL"; tail -50 cloudflared.log; exit 1; }
-
-          URL="$TUNNEL/?k=$GATE_TOKEN"
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-
-          # Commit statuses are world-readable on a public repo, so publish the
-          # bare tunnel URL only. The CLI generated the access key and appends it
-          # locally; putting it here would hand anyone a working link.
-
-          # A commit status is the one channel the local CLI can read live.
+          [ -n "$TUNNEL" ] || { echo "::error::Cloudflare tunnel unavailable after 3 attempts"; tail -30 cloudflared.log cloudflared-stderr.log; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -f state=success \
-            -f "context=$STATUS_CONTEXT" \
-            -f "target_url=$TUNNEL" \
-            -f "description=simulator live; app still building"
-
-          echo "::notice title=native-sim::$TUNNEL (append the access key the CLI printed)"
-          {
-            echo "## 📱 native-sim"
-            echo
-            echo "Simulator live for ${{ inputs.minutes }} minutes at \`$TUNNEL\`."
-            echo
-            echo "The access key is deliberately not published here — use the full"
-            echo "URL the CLI printed. Anyone holding it can drive the simulator."
-          } >> "$GITHUB_STEP_SUMMARY"
+            -f state=success -f "context=$STATUS_CONTEXT" -f "target_url=$TUNNEL" \
+            -f "description=simulator live; Expo Go is loading"
+          echo "::notice title=native-sim::$TUNNEL (use the private link in Sim Studio)"
       - name: Start Expo Go
         timeout-minutes: 15
         if: inputs.mode == 'go'
@@ -295,13 +288,6 @@ jobs:
           nohup node .github/native-sim/preview-runner.cjs watch > .git/studio-watch.log 2>&1 &
           disown
       - name: Hold the stream open
-        env:
-          AGENT_ENABLED: ${{ inputs.agent_device }}
-          GATE_TOKEN: ${{ inputs.gate_token }}
-          AGENT_DEVICE_DAEMON_IDLE_TIMEOUT_MS: '0'
-          AGENT_DEVICE_IOS_RUNNER_IDLE_STOP_MS: '0'
-          AGENT_DEVICE_LEASE_TTL_MS: '21600000'
-          AGENT_DEVICE_LEASE_MAX_TTL_MS: '21600000'
         run: |-
           set -euo pipefail
           END=$(( $(date +%s) + ${{ inputs.minutes }} * 60 ))
