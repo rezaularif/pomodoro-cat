@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# never pushed — generated dependencies and build output
+*.log
+# never pushed - the preview repo may be public
+.env
+.env.*
+!.env.example

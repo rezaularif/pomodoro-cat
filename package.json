@@ -21,5 +21,6 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"
-  }
+  },
+  "packageManager": "npm@12.0.2"
 }
